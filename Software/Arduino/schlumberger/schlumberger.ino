@@ -10,10 +10,10 @@ bool rotated_state = false;
 
 
 void setup() {
-  
+
   bool not_ready[NSENS] = {0};                                      // Boolean to loop over failed sensor
   int  cnt              =  0;                                       // Counter for reset
-  
+
   Serial.begin( BAUDRATE );                                         // Start serial monitor
 
   setupIMU();                                                       // Setup IMUs
@@ -24,23 +24,23 @@ void setup() {
     for ( uint8_t i = 0; i < NSENS; i++ )                           // Iterate over sensors until initialized
     {
       char buff[27] = {'\0'};                                       // Array to hold INFO string
-      sprintf( buff, "[INFO] Initializing IMU %i\n", i+1 );         // [INFO] ...
+      sprintf( buff, "[INFO] Initializing IMU %i\n", i + 1 );       // [INFO] ...
       Serial.print( buff );                                         // [INFO] ...
-      
+
       not_ready[i] = true;                                          // Set IMU as not ready
       while ( not_ready[i] )                                        // Loop until IMU is initialized/fixed
       {
         if ( !(i % 2) ) not_ready[i] = !imuHI.begin();              // If odd  index, it is the HI imus
         else            not_ready[i] = !imuLO.begin();              // If even index, it is the LO imus
-        
+
         Serial.print( "." );                                        // Print "progress/status" dots
         if ( ++cnt % 20 == 0 ) Serial.println();                    // Print new-line every 10sec
         delay( 500 );                                               // Delay for sramatic purposes
       } Serial.print( F("DONE!\n") );                               // [INFO] ...
-    } 
+    }
   }
   calibrateIMU( 1 );                                                // Run calibration routine
-  
+
 }
 
 void loop() {
@@ -62,9 +62,9 @@ void loop() {
   static double  norm_ngtv[NSENS]  = {0};                           // n-1  norm reading (Oldest)
   static double  norm_cntr[NSENS]  = {0};                           // n    norm reading (Older )
   static double  norm_pstv[NSENS]  = {0};                           // n+1  norm reading (Latest / current)
-  
+
   long unsigned int startTime = millis();                           // timer for timed_out()
-  
+
   char    buff[156]         = {'\0'};                               // String buffer
 
   strcat( buff, "<" );                                              // SOH indicator
@@ -83,56 +83,42 @@ void loop() {
     is_norm_max( norm_ngtv[i], norm_cntr[i], norm_pstv[i], i );     // Determine if we reached the maximum norm reading
     norm_ngtv[i] = norm_cntr[i]; norm_cntr[i] = norm_pstv[i];       // Propagate norm readings "upstream"
 
-  } strcat( buff, ">" );                                            // EOT indicator
+  } 
 
-//  if( timed_out( startTime, timer ) )
-//  {
-//    Serial.print( "Timers Reset\n" );
-//    startTime = millis();
-//    delay( 1000 );
-//  }
   // ========================= PRINT STUFF TO SERIAL =========================
 
-  if ( VERBOSE ) Serial.println( buff );
+  static int  rotation_num  = 0;
 
-  if ( ROTATION )
+  if ( sqrt(norm_pstv[1]) >= 2 && !rotated_state )
   {
-    static int  rotation_num  = 0;
-//    Serial.println( !rotated_state );
-//    Serial.print( F("norm_max[0]: ") ); Serial.println( norm_max[0] );
-//    Serial.print( F("norm_max[1]: ") ); Serial.println( norm_max[1] );
-      
-    if ( sqrt(norm_pstv[1]) >= 2 && !rotated_state )
-    { 
-      if ( norm_max[0] && norm_max[1] && timer[0] > 0 && timer[1] > 0 )
-      {
-        Serial.print( "Rotation: " );
-        //Serial.print( rotation_num++ );
-        rotated_state = true;
-      
-        if ( timer[0] < timer[1] )
-        {
-          Serial.print( ++rotation_num );
-          Serial.print( " CW\n" );
-        }
-        else if ( timer[0] > timer[1] )
-        {
-          Serial.print( --rotation_num );
-          Serial.print( " CCW\n" );
-        }
-        norm_max[0] = norm_max[1] = false;
-        timer[0] = timer[1] = 0;
-        //delay( 1000 );
-      }
-
-    }
-
-    else if ( sqrt(norm_pstv[1]) <= 2 && rotated_state )
+    if ( norm_max[0] && norm_max[1] && timer[0] > 0 && timer[1] > 0 )
     {
-      rotated_state = false;
+      Serial.print( "Rotation: " );
+      rotated_state = true;
+
+      if ( timer[0] < timer[1] )
+      {
+        strcat( buff, ++rotation_num );                             // Number of rotations
+        strcat( buff, ",CW" );                                      // Direction
+      }
+      else if ( timer[0] > timer[1] )
+      {
+        strcat( buff, --rotation_num );                             // Number of rotations
+        strcat( buff, ",CCW" );                                     // Direction
+      }
+      norm_max[0] = norm_max[1] = false;
+      timer[0] = timer[1] = 0;
     }
 
   }
+
+  else if ( sqrt(norm_pstv[1]) <= 2 && rotated_state )
+  {
+    rotated_state = false;
+  }
+  
+  strcat( buff, ">" );                                            // EOT indicator
+
   delay( 25 );
 
 }
