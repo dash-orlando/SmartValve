@@ -83,31 +83,36 @@ void loop() {
     is_norm_max( norm_ngtv[i], norm_cntr[i], norm_pstv[i], i );     // Determine if we reached the maximum norm reading
     norm_ngtv[i] = norm_cntr[i]; norm_cntr[i] = norm_pstv[i];       // Propagate norm readings "upstream"
 
-  } 
+  }
 
   // ========================= PRINT STUFF TO SERIAL =========================
 
   static int  rotation_num  = 0;
-
+  char        arr[ 10 ] = {'\0'};
   if ( sqrt(norm_pstv[1]) >= 2 && !rotated_state )
   {
     if ( norm_max[0] && norm_max[1] && timer[0] > 0 && timer[1] > 0 )
     {
-      Serial.print( "Rotation: " );
       rotated_state = true;
 
       if ( timer[0] < timer[1] )
       {
-        strcat( buff, ++rotation_num );                             // Number of rotations
-        strcat( buff, ",CW" );                                      // Direction
+        sprintf( arr, ",%i,CW", ++rotation_num );                   // Number of rotations + direction
+        strcat( buff, arr );                                        // Concatenate strings
       }
       else if ( timer[0] > timer[1] )
       {
-        strcat( buff, --rotation_num );                             // Number of rotations
-        strcat( buff, ",CCW" );                                     // Direction
+        sprintf( arr, ",%i,CCW", --rotation_num );                  // Number of rotations + direction
+        strcat( buff, arr );                                        // Concatenate strings
       }
       norm_max[0] = norm_max[1] = false;
       timer[0] = timer[1] = 0;
+    }
+
+    else
+    {
+      sprintf( arr, ",%i,NULL", rotation_num );                     // Number of rotations + direction
+      strcat( buff, arr );                                          // Concatenate strings
     }
 
   }
@@ -115,9 +120,18 @@ void loop() {
   else if ( sqrt(norm_pstv[1]) <= 2 && rotated_state )
   {
     rotated_state = false;
+    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
+    strcat( buff, arr );                                            // Concatenate strings
   }
-  
-  strcat( buff, ">" );                                            // EOT indicator
+
+  else
+  {
+    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
+    strcat( buff, arr );                                            // Concatenate strings
+  }
+
+  strcat( buff, ">" );                                              // EOT indicator
+  Serial.println( buff );
 
   delay( 25 );
 
