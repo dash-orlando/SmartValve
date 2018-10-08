@@ -5,15 +5,15 @@
 * Adapted from: John Harrison's original work
 * Link: http://cratel.wichita.edu/cratel/python/code/SimpleVoltMeter
 *
-* VERSION: 0.1
-*   - MODIFIED: Initial release
+* VERSION: 0.2
+*   - ADDED   : Completed the serial communication protocol
 *
 * KNOWN ISSUES:
 *   - Non atm
 * 
 * AUTHOR                    :   Mohammad Odeh
 * DATE                      :   Oct.  2nd, 2018 Year of Our Lord
-* LAST CONTRIBUTION DATE    :                   ---
+* LAST CONTRIBUTION DATE    :   Oct.  8th, 2018 Year of Our Lord
 *
 '''
 
@@ -23,6 +23,7 @@
 
 # Python modules
 import  sys, serial, argparse                                                       # 'nuff said
+import  numpy                           as      np                                  # Do Maffs!
 from    PyQt4                           import  QtCore, QtGui, Qt                   # PyQt4 libraries required to render display
 from    PyQt4.Qwt5                      import  Qwt                                 # Same here, boo-boo!
 from    threading                       import  Thread                              # Run functions in "parallel"
@@ -193,6 +194,9 @@ class Worker( QtCore.QThread ):
 
         print( fullStamp() + " Initializing Worker Thread" )
 
+        self.crnt_rotation = 0              # Current rotation stored
+        self.prvs_rotation = 0              # Previous rotation stored
+        
         # Start
         self.owner = parent
         self.start()
@@ -204,35 +208,120 @@ class Worker( QtCore.QThread ):
 
 # ------------------------------------------------------------------------
 
+    def readPort( self ):
+
+        # Flush buffer
+        self.ESP32.reset_input_buffer()
+        self.ESP32.reset_output_buffer()
+
+        try:
+
+            # Wait until we receive the SOH specifier '<'
+            while( True ):
+                if( self.ESP32.in_waiting > 0 ):
+                    inData = self.ESP32.read()
+                    if( inData == '<' ):
+                        break
+
+            # Read data until we hit the EOT specifier '>'
+            line = ''
+            while( True ):
+                if( self.ESP32.in_waiting > 0 ):
+                    inData = self.ESP32.read()
+                    if( inData == '>' ):
+                        break
+                    line = line + inData
+
+            # Split constructed string into its constituent components
+            col     = (line.rstrip()).split(",")
+
+            # Check if array is corrupted. We expect 3 readings per sensor + 2 for rotation.
+            NSENS = 2
+            if( len(col) == NSENS*3 + 2 ):
+                # Construct magnetic field array
+                # (in case we need to use ...
+                #  ... it to determine position)
+
+                # Magnetic field readings from Sensor 1
+                Bx = float( col[0] )
+                By = float( col[1] )
+                Bz = float( col[2] )
+                B1 = np.array( ([Bx],[By],[Bz]), dtype='float64' )      # Units { G }
+
+                # Magnetic field readings from Sensor 2
+                Bx = float( col[3] )
+                By = float( col[4] )
+                Bz = float( col[5] )
+                B2 = np.array( ([Bx],[By],[Bz]), dtype='float64' )      # Units { G }
+
+                # Number of rotations and direction
+                num_rot = int( col[6] )
+                dir_rot = str( col[7] )
+
+                return( B1, B2, num_rot, dir_rot )
+
+            # In case array is corrupted, do a recursive call to readPort() function
+            else:
+                self.readPort()
+                
+        
+        except Exception as e:
+            print( "Caught error in readPort()"         )
+            print( "Error type {}".format(type(e))      )
+            print( "Error arguments {}".format(e.args)  )
+
+# ------------------------------------------------------------------------
+
     def run( self ):
 
         while( self.PORT == 'none' ):                                               # Do nothing until
             sleep( 0.01 )                                                           # a device is paired
         
-
-        ESP32 = createUSBPort( self.PORT, self.BAUD, self.TIMEOUT )
+        try:
+            self.ESP32 = createUSBPort( self.PORT, self.BAUD, self.TIMEOUT )        # Start USB comms.
+            if( self.ESP32.is_open == False ):                                      # Make sure port is open
+                self.ESP32.open()                                                   #   ...
+            print( "ESP32 Ready" )
+            
+        except:
+            print( "FAILED TO CREATE PORT. ABORTING PROGRAM." )                     # DIE
+            quit()                                                                  # ...
+            
         QtCore.QThread.sleep( 2 )                                                   # Delay for stability
         
         self.startTime = time()                                                     # Store initial time (for timestamp)
 
+        DEMO = False
         while( True ):                                                              # Loop 43va!
-            j=0
-            for i in range( 1, 11 ):
-                self.synthesize_pulse( j, i )
-                j=i
 
-                sleep( 0.5 )
+            # If demo-ing the dial turning
+            if( DEMO ):
+                j=0
+                for i in range( 1, 11 ):
+                    self.synthesize_pulse( j, i )
+                    j=i
 
-            sleep( 2.5 )
-            
-            j=10
-            for i in range( 9, 0, -1 ):
-                self.synthesize_pulse( j, i )
-                j=i
+                    sleep( 0.5 )
 
-                sleep( 0.5 )
+                sleep( 2.5 )
+                
+                j=10
+                for i in range( 9, 0, -1 ):
+                    self.synthesize_pulse( j, i )
+                    j=i
 
-            sleep( 2.5 )
+                    sleep( 0.5 )
+
+                sleep( 2.5 )
+
+            # If actually using acquired data
+            else:
+                (H1, H2, rotation, direction) = self.readPort()
+                self.crnt_rotation = rotation
+                self.synthesize_pulse( self.prvs_rotation, self.crnt_rotation )
+                self.prvs_rotation = self.crnt_rotation
+                
+                
 
 # ------------------------------------------------------------------------
 
