@@ -15,19 +15,32 @@
  */
 
 // System parameters
-#define NSENS     2                                   // Number of sensors
-#define NAXES     3                                   // Number of axes
-#define ALPHA     0.25                                // Smoothing factor
+#define NSENS       2                                 // Number of sensors
+#define NAXES       3                                 // Number of axes
+#define ALPHA_READ  0.25                              // Smoothing factor
+#define ALPHA_NORM  0.05                              // Smoothing factor
 
-static double exp_avg[NSENS][NAXES] =  { {0, 0, 0},   //  {1x, 1y, 1z}
-                                         {0, 0, 0} }; //  {4x, 4y, 4z}
+static double exp_avg_read[NSENS][NAXES]  =  { 0 };   //  {Bx, By, Bz}
+static double exp_avg_norm[NSENS]         =  { 0 };   //  {Norm_1. Norm_2}
 
 // ============================  EMA Filter  ===========================
-double ema_filter( double current_value, byte sens, byte axis )
+double ema_filter( double current_value, byte sens, byte axis, bool filter_norm = false )
 {
-  // Filter data
-  exp_avg[sens][axis] = ALPHA*current_value + (1 - ALPHA)*exp_avg[sens][axis];
+  if( filter_norm )
+  {
+    // Filter data
+    exp_avg_norm[sens] = ALPHA_NORM*current_value + (1 - ALPHA_NORM)*exp_avg_norm[sens];
+  
+    // Return Filtered data
+    return( exp_avg_norm[sens] );
+  }
 
-  // Return Filtered data
-  return( exp_avg[sens][axis] );
+  else
+  {
+    // Filter data
+    exp_avg_read[sens][axis] = ALPHA_READ*current_value + (1 - ALPHA_READ)*exp_avg_read[sens][axis];
+  
+    // Return Filtered data
+    return( exp_avg_read[sens][axis] );
+  }
 }

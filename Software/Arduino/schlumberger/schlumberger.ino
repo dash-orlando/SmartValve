@@ -1,5 +1,6 @@
 #include <SparkFunLSM9DS1.h>                                        // Call IMUs library
 #define   BAUDRATE      115200                                      // Serial communication baudrate
+#define   DEBUG         0                                           // Uncomment for debugging
 
 LSM9DS1 imuHI;                                                      // Odd numbers
 LSM9DS1 imuLO;                                                      // Even numbers
@@ -87,52 +88,57 @@ void loop() {
 
   // ========================= PRINT STUFF TO SERIAL =========================
 
-  static int  rotation_num  = 0;
-  char        arr[ 10 ] = {'\0'};
-  if ( sqrt(norm_pstv[1]) >= 2 && !rotated_state )
-  {
-    if ( norm_max[0] && norm_max[1] && timer[0] > 0 && timer[1] > 0 )
-    {
-      rotated_state = true;
-
-      if ( timer[0] < timer[1] )
-      {
-        sprintf( arr, ",%i,CW", ++rotation_num );                   // Number of rotations + direction
-        strcat( buff, arr );                                        // Concatenate strings
-      }
-      else if ( timer[0] > timer[1] )
-      {
-        sprintf( arr, ",%i,CCW", --rotation_num );                  // Number of rotations + direction
-        strcat( buff, arr );                                        // Concatenate strings
-      }
-      norm_max[0] = norm_max[1] = false;
-      timer[0] = timer[1] = 0;
-    }
-
-    else
-    {
-      sprintf( arr, ",%i,NULL", rotation_num );                     // Number of rotations + direction
-      strcat( buff, arr );                                          // Concatenate strings
-    }
-
-  }
-
-  else if ( sqrt(norm_pstv[1]) <= 2 && rotated_state )
-  {
-    rotated_state = false;
-    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
-    strcat( buff, arr );                                            // Concatenate strings
-  }
-
-  else
-  {
-    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
-    strcat( buff, arr );                                            // Concatenate strings
-  }
-
-  strcat( buff, ">" );                                              // EOT indicator
-  Serial.println( buff );
-
-  delay( 25 );
+//  static int  rotation_num  = 0;
+//  char        arr[ 10 ] = {'\0'};
+//  if ( sqrt(norm_pstv[1]) >= 3 && !rotated_state )
+//  { 
+//    if ( norm_max[0] && norm_max[1] && timer[0] > 0 && timer[1] > 0 )
+//    {
+//      rotated_state = true;
+//
+//      if ( timer[0] < timer[1] )
+//      {
+//        sprintf( arr, ",%i,CW", ++rotation_num );                   // Number of rotations + direction
+//        strcat( buff, arr );                                        // Concatenate strings
+//      }
+//      else if ( timer[0] > timer[1] )
+//      {
+//        sprintf( arr, ",%i,CCW", --rotation_num );                  // Number of rotations + direction
+//        strcat( buff, arr );                                        // Concatenate strings
+//      }
+//      norm_max[0] = norm_max[1] = false;
+//      timer[0] = timer[1] = 0;
+//    }
+//
+//    else
+//    {
+//      sprintf( arr, ",%i,NULL", rotation_num );                     // Number of rotations + direction
+//      strcat( buff, arr );                                          // Concatenate strings
+//    }
+//
+//  }
+//
+//  else if ( sqrt(norm_pstv[1]) <= 4 && rotated_state )
+//  {
+//    rotated_state = false;
+//    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
+//    strcat( buff, arr );                                            // Concatenate strings
+//  }
+//
+//  else
+//  {
+//    sprintf( arr, ",%i,NULL", rotation_num );                       // Number of rotations + direction
+//    strcat( buff, arr );                                            // Concatenate strings
+//  }
+//
+//  strcat( buff, ">" );                                              // EOT indicator
+//  Serial.println( buff );
+  norm_pstv[0] = ema_filter( norm_pstv[0], 0, -1, true );
+  norm_pstv[1] = ema_filter( norm_pstv[1], 1, -1, true );
+  Serial.print( 00 ); Serial.print( " " );                            // Set y-axis lower bound
+  Serial.print( 40 ); Serial.print( " " );                            // Set y-axis upper bound
+  Serial.print(   sqrt(norm_pstv[0]), 3 ); Serial.print( " " );
+  Serial.println( sqrt(norm_pstv[1]), 3 );
+  //delay( 75 );
 
 }

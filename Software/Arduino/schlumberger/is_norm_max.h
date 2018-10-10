@@ -4,17 +4,17 @@ static bool               norm_max[NSENS] = {0};
 void is_norm_max( double left, double center, double right, uint8_t NDX)
 {
   
-  if ( center > left + center*(0.1) && center > right + center*(0.1) )
-  //if ( center > left*(1.25) && center > right*(1.25) )
+  //if ( center > left + center*(0.05) && center > right + center*(0.05) )
+  if ( sqrt(center) > sqrt(left)*(1.10) && sqrt(center) > sqrt(right)*(1.10) )
   //if ( center > right*(1.25) )
   {
     norm_max[NDX] = true;
     timer[NDX]    = millis();
   }
 
-  if ( CALIBRATION )
+  if ( DEBUG )
   {
-    char  buff[65] = {'\0'};
+    char  buff[99] = {'\0'};
     char  arr[150] = {'\0'};
     Serial.print( F("SENSOR [ ") ); Serial.print( NDX+1 ); Serial.print( F(" ] : ") );
     strcat( buff, "Norm[ n-1 ] = " ); dtostrf( sqrt(left)   , 5, 3, &buff[strlen(buff)] );
