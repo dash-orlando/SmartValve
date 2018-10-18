@@ -128,7 +128,7 @@ def getData( queue ):
             
         queue.put( out )                                                    # Place items in queue
 
-    queue.close()                                                           # Close queue
+    magneto.close()                                                         # Close spawn
     
 # --------------------------
 
@@ -280,7 +280,7 @@ def findIG( magFields ):
     #     /  sensor 2: (x, y, z)
     # Mat=      :          :
     #     \     :          :
-    #      \ sensor 6: (x, y, z)
+    #      \ sensor n: (x, y, z)
     IMU_pos = np.array(((X1, Y1, Z1) ,
                         (X2, Y2, Z2) ,
                         (X3, Y3, Z3) ,
@@ -312,19 +312,17 @@ def compute_rotation( position_crnt, TOL = 1e-6 ):
     '''
     global position_prvs, revolutions
 
-    r, theta = position_crnt                                                # Unpack data
-    R, THETA = position_prvs                                                # ...
+    r, theta, z = position_crnt                                             # Unpack data
+    _, THETA, _ = position_prvs                                             # ...
 
     if( theta >= -np.pi and THETA <= np.pi ):                               # Limit ourselves to atan2(y, x) domain
         if ( theta - THETA < -5 ):                                          #   In case we are going CCW
             revolutions -= 1                                                #       Decrement revolutions counter
-            print( "We are moving CCW" )                                    #       ...
-            print( " Number of revolutions: {}".format(revolutions) )       #       ...
+            print( "<DIR:CCW,REV:{},H:{}>".format(revolutions, z) )         #       ...
             
         elif ( theta - THETA > 5 ):                                         #   In case we are going CW
             revolutions += 1                                                #       Increment revolutions counter
-            print( "We are moving CW" )                                     #       ...
-            print( " Number of revolutions: {}".format(revolutions) )       #       ..
+            print( "<DIR:CW,REV:{},H:{}>".format(revolutions, z) )          #       ...
 
     position_prvs = position_crnt                                           # Update PAST variable
 
@@ -351,7 +349,7 @@ def convert_to_polar( cartesian_coordinates ):
     if( args["debug"] or args["verbose"] ):
         print( "r = {}, theta = {}".format(r, theta) )
 
-    return( r, theta )
+    return( r, theta, z )
 
 # ************************************************************************
 # ===========================> SETUP PROGRAM <===========================
@@ -359,7 +357,7 @@ def convert_to_polar( cartesian_coordinates ):
 
 # Define useful variables/parameters
 global position_prvs, revolutions                                           # Used to store previous position readings ...
-position_prvs   = 0, 0                                                      # ... used for determining direction ...
+position_prvs   = 0, 0, 0                                                   # ... used for determining direction ...
 revolutions     = 0                                                         # ... and number of revolutions
 
 # Define the position of the sensors on the grid

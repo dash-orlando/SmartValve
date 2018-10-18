@@ -5,15 +5,15 @@
 * Adapted from: John Harrison's original work
 * Link: http://cratel.wichita.edu/cratel/python/code/SimpleVoltMeter
 *
-* VERSION: 0.2
-*   - ADDED   : Completed the serial communication protocol
+* VERSION: 0.3
+*   - ADDED   : Use Finexus method to determine number of revolutions and direction
 *
 * KNOWN ISSUES:
 *   - Non atm
 * 
 * AUTHOR                    :   Mohammad Odeh
 * DATE                      :   Oct.  2nd, 2018 Year of Our Lord
-* LAST CONTRIBUTION DATE    :   Oct.  8th, 2018 Year of Our Lord
+* LAST CONTRIBUTION DATE    :   Oct. 18th, 2018 Year of Our Lord
 *
 '''
 
@@ -22,36 +22,28 @@
 # ************************************************************************
 
 # Python modules
-import  sys, serial, argparse                                                       # 'nuff said
-import  numpy                           as      np                                  # Do Maffs!
+import  sys, argparse, pexpect                                                      # 'nuff said
 from    PyQt4                           import  QtCore, QtGui, Qt                   # PyQt4 libraries required to render display
 from    PyQt4.Qwt5                      import  Qwt                                 # Same here, boo-boo!
 from    threading                       import  Thread                              # Run functions in "parallel"
-from    time                            import  sleep, time                         # Add delays for stability, time things
-from    os                              import  getcwd, path, makedirs              # Pathname manipulation for saving data output
+from    Queue                           import  Queue                               # Pipe stuff out from threads
+from    time                            import  sleep                               # Add delays for stability
 
 # PD3D modules
 from    dial                            import  Ui_MainWindow                       # Imports pre-built dial guage from dial.py
 from    timeStamp                       import  fullStamp                           # Show date/time on console output
-from    usbProtocol                     import  createUSBPort
 
 # ************************************************************************
 # CONSTRUCT ARGUMENT PARSER 
 # ************************************************************************
 ap = argparse.ArgumentParser()
 
-ap.add_argument( "-s", "--samplingFrequency", type=float, default=1.0,
-                help="Set sampling frequency (in secs).\nDefault=1" )
-
-ap.add_argument( "-d", "--debug", action='store_true',
-                help="Invoke flag to enable debugging" )
-
-ap.add_argument( "--directory", type=str, default='output',
-                help="Set directory" )
+ap.add_argument( "-d", "--debug", action = 'store_true',
+                 help = "Invoke flag to enable debugging" )
 
 args = vars( ap.parse_args() )
 
-args["debug"] = True
+##args["debug"] = True
 # ************************************************************************
 # SETUP PROGRAM
 # ************************************************************************
@@ -98,23 +90,18 @@ class MyWindow( QtGui.QMainWindow ):
         # Setup buttons
         self.ui.pushButtonPair.setEnabled( True )
         self.ui.pushButtonPair.setText( QtGui.QApplication.translate("MainWindow", "Start", None, QtGui.QApplication.UnicodeUTF8) )
-        self.ui.pushButtonPair.clicked.connect( lambda: self.start(USB_PORT, USB_BAUD, USB_TIMEOUT) )
+        self.ui.pushButtonPair.clicked.connect( lambda: self.start() )
 
 # ------------------------------------------------------------------------
 
-    def start( self, USB_PORT, USB_BAUD, USB_TIMEOUT ):
+    def start( self ):
         """
-        Connect to MQTT server
+        Set things in motion
         """
         
-        self.thread.PORT    = str( USB_PORT )                                       # Set port number
-        self.thread.BAUD    = USB_BAUD                                              # Set baudrate
-        self.thread.TIMEOUT = USB_TIMEOUT                                           # Set timeout
+        self.thread.not_ready = False                                               # Indicate we are ready
         self.ui.Dial.setEnabled( True )                                             # Enable dial
         self.ui.pushButtonPair.setEnabled( False )                                  # Disable pushbutton
-
-        # Create logfile
-        self.setup_log()
         
         # set timeout function for updates
         self.ctimer = QtCore.QTimer()                                               # Define timer
@@ -123,14 +110,6 @@ class MyWindow( QtGui.QMainWindow ):
                                 self.UpdateDisplay )                                # ...
         self.ctimer.start( 10 )                                                     # Start timed thread
 
-        # Set timeout function for writing to log
-        millis = int( args["samplingFrequency"]*1000 )                              # Cast into integer
-        self.log_timer = QtCore.QTimer()                                            # Define timer
-        QtCore.QObject.connect( self.log_timer,                                     # Connect signals...
-                                QtCore.SIGNAL( "timeout()" ),                       # to slots.
-                                self.thread.write_log )                             # ...
-        self.log_timer.start( millis )                                              # Start timed thread
-        
 # ------------------------------------------------------------------------
 
     def UpdateDisplay( self ):
@@ -145,33 +124,18 @@ class MyWindow( QtGui.QMainWindow ):
 
 # ------------------------------------------------------------------------
 
-    def setup_log( self ):
-        """
-        Setup directory and create logfile.
-        """
-        
-        self.dataFileDir = getcwd() + "/dataOutput/" + args["directory"]            # Define directory
-        self.dataFileName = self.dataFileDir + "/output.txt"                        # Define output file
-
-        if( path.exists(self.dataFileDir) == False ):                               # Create directory ... 
-            makedirs( self.dataFileDir )                                            # if it doesn't exist.
-            print( fullStamp() + " Created data output folder" )                    # ...
-
-        with open( self.dataFileName, "w" ) as f:                                   # Write down info as ...
-            f.write( "Date/Time     :  {}\n".format(fullStamp())    )               # a header on the ...
-            f.write( "seconds,    kPa , mmHg Actual, mmHg Simulated\n" )            # ...
-            f.close()                                                               # ...
-
-        print( fullStamp() + " Created data output .txt file\n" )                   # [INFO] Status
-
-# ------------------------------------------------------------------------
-
     def cleanUp( self ):
         """
         Clean up at program exit.
         Stops recording and closes communication with device
         """
-        
+
+        print( fullStamp() + " Cleaning up" ),
+##        self.thread.finexus_method.close()                                          # Close pexpect spawn
+        if( self.thread.t_readPort.isAlive() ):                                     # Terminate thread
+            self.thread.t_readPort.join( 1.0 )                                      # ...
+        print( "...DONE" )
+
         print( fullStamp() + " Goodbye!" )
         QtCore.QThread.sleep( 2 )                                                   # this delay may be essential
 
@@ -180,22 +144,32 @@ class MyWindow( QtGui.QMainWindow ):
 # ************************************************************************
 
 class Worker( QtCore.QThread ):
-
-    PORT    = 'none'
-    BAUD    = 'none'
-    TIMEOUT = 'none'
     
-    # Define sampling frequency (units: sec) controls writing frequency
-    wFreq = args["samplingFrequency"]                                               # Frequency at which to write data
-    wFreqTrigger = time()                                                      # Trigger counter ^
+    not_ready = True
     
     def __init__( self, parent = None ):
         QtCore.QThread.__init__( self, parent )
 
-        print( fullStamp() + " Initializing Worker Thread" )
+        print( fullStamp() + " Initializing Worker Thread" ) ,
 
-        self.crnt_rotation = 0              # Current rotation stored
-        self.prvs_rotation = 0              # Previous rotation stored
+        # Error handling in case thread spawning fails (1/2)
+        try:
+            self.py_prog = "python /home/pi/Desktop/magneto/Tracking/Finexus_Method.py"
+            self.q_py_output = Queue( maxsize=0 )                                   # Define queue (this will have the Finexus_Method output)
+            self.t_readPort = Thread( target=self.readPort, args=() )               # Define thread
+            self.t_readPort.daemon = True                                           # Set to daemon
+            self.t_readPort.start()                                                 # Start thread
+
+        # Error handling in case thread spawning fails (2/2)
+        except Exception as e:
+            print( "Could NOT create thread, check .cpp")
+            print( "Error type {}".format(type(e))      )
+            print( "Error Arguments {}".format(e.args)  )
+            sleep( 2.5 )
+            quit()                                                                  # Shutdown entire program
+            
+        self.crnt_rotation = 0                                                      # Current rotation stored
+        self.prvs_rotation = 0                                                      # Previous rotation stored
         
         # Start
         self.owner = parent
@@ -210,61 +184,33 @@ class Worker( QtCore.QThread ):
 
     def readPort( self ):
 
-        # Flush buffer
-        self.ESP32.reset_input_buffer()
-        self.ESP32.reset_output_buffer()
-
         try:
+            finexus_method = pexpect.spawn( self.py_prog, timeout=None )            # Spawn python program as 
+            
+            for line in finexus_method:
+                out = line.strip('\n\r')                                            # Remove newlines & carriage return
 
-            # Wait until we receive the SOH specifier '<'
-            while( True ):
-                if( self.ESP32.in_waiting > 0 ):
-                    inData = self.ESP32.read()
-                    if( inData == '<' ):
-                        break
+                if( out == "GO!" ):
+                    print( "...DONE" )
 
-            # Read data until we hit the EOT specifier '>'
-            line = ''
-            while( True ):
-                if( self.ESP32.in_waiting > 0 ):
-                    inData = self.ESP32.read()
-                    if( inData == '>' ):
-                        break
-                    line = line + inData
+                if( out[0] == "<" ):
+                    print( out )                                                    # Print to screen
+                    
+                    out = out.strip( "<" )                                          # Strip the SOH marker
+                    out = out.strip( ">" )                                          # Strip the EOT marker
+                    out = (out.rstrip()).split(",")                                 # Strip any white space and split at delimiter
 
-            # Split constructed string into its constituent components
-            col     = (line.rstrip()).split(",")
+                    dir_rev = str( out[0].strip("DIR:") )                           # Get direction
+                    num_rev = int( out[1].strip("REV:") )                           # Get count
+                    height  = float( out[2].strip( "H:" ) )                         # Get height
 
-            # Check if array is corrupted. We expect 3 readings per sensor + 2 for rotation.
-            NSENS = 2
-            if( len(col) == NSENS*3 + 2 ):
-                # Construct magnetic field array
-                # (in case we need to use ...
-                #  ... it to determine position)
+                    output = ( dir_rev, num_rev, height )                           # Pack data
+                    
+                    with self.q_py_output.mutex:                                    # Clear queue. This is done because we are placing items
+                        self.q_py_output.queue.clear()                              # in the queue faster than we are using, causing a lag.
+                        
+                    self.q_py_output.put( output )                                  # Place items in queue
 
-                # Magnetic field readings from Sensor 1
-                Bx = float( col[0] )
-                By = float( col[1] )
-                Bz = float( col[2] )
-                B1 = np.array( ([Bx],[By],[Bz]), dtype='float64' )      # Units { G }
-
-                # Magnetic field readings from Sensor 2
-                Bx = float( col[3] )
-                By = float( col[4] )
-                Bz = float( col[5] )
-                B2 = np.array( ([Bx],[By],[Bz]), dtype='float64' )      # Units { G }
-
-                # Number of rotations and direction
-                num_rot = int( col[6] )
-                dir_rot = str( col[7] )
-
-                return( B1, B2, num_rot, dir_rot )
-
-            # In case array is corrupted, do a recursive call to readPort() function
-            else:
-                self.readPort()
-                
-        
         except Exception as e:
             print( "Caught error in readPort()"         )
             print( "Error type {}".format(type(e))      )
@@ -274,81 +220,17 @@ class Worker( QtCore.QThread ):
 
     def run( self ):
 
-        while( self.PORT == 'none' ):                                               # Do nothing until
-            sleep( 0.01 )                                                           # a device is paired
-        
-        try:
-            self.ESP32 = createUSBPort( self.PORT, self.BAUD, self.TIMEOUT )        # Start USB comms.
-            if( self.ESP32.is_open == False ):                                      # Make sure port is open
-                self.ESP32.open()                                                   #   ...
-            print( "ESP32 Ready" )
-            
-        except:
-            print( "FAILED TO CREATE PORT. ABORTING PROGRAM." )                     # DIE
-            quit()                                                                  # ...
+        while( self.not_ready ):                                                    # Do nothing until we are ready
+            sleep( 0.01 )                                                           # ...
             
         QtCore.QThread.sleep( 2 )                                                   # Delay for stability
         
-        self.startTime = time()                                                     # Store initial time (for timestamp)
-
-        DEMO = False
         while( True ):                                                              # Loop 43va!
 
-            # If demo-ing the dial turning
-            if( DEMO ):
-                j=0
-                for i in range( 1, 11 ):
-                    self.synthesize_pulse( j, i )
-                    j=i
-
-                    sleep( 0.5 )
-
-                sleep( 2.5 )
-                
-                j=10
-                for i in range( 9, 0, -1 ):
-                    self.synthesize_pulse( j, i )
-                    j=i
-
-                    sleep( 0.5 )
-
-                sleep( 2.5 )
-
-            # If actually using acquired data
-            else:
-                (H1, H2, rotation, direction) = self.readPort()
-                self.crnt_rotation = rotation
-                self.synthesize_pulse( self.prvs_rotation, self.crnt_rotation )
-                self.prvs_rotation = self.crnt_rotation
-                
-                
-
-# ------------------------------------------------------------------------
-
-    def write_log( self ):
-        """
-        Write to log file.
-
-        Inputs:-
-            - NONE
-
-        Output:-
-            - NONE
-        """
-
-        try:
-            self.wFreqTrigger = time()                                              # Reset wFreqTrigger
-            stamp = time()-self.startTime                                           # Time stamp
-
-            # Write to file
-            dataStream = "%6.2f , %6.2f\n" %( stamp, self.owner.crnt_reading )      # Format readings into string
-
-            with open( self.owner.dataFileName, "a" ) as f:
-                f.write( dataStream )                                               # Write to file
-                f.close()                                                           # Close file
-
-        except:
-            pass
+            (dir_rev, num_rev, height) = self.q_py_output.get()
+            self.crnt_rotation = num_rev
+            self.synthesize_pulse( self.prvs_rotation, self.crnt_rotation )
+            self.prvs_rotation = self.crnt_rotation
 
 # ------------------------------------------------------------------------
 
@@ -394,15 +276,6 @@ class Worker( QtCore.QThread ):
                 if( self.owner.crnt_reading <= crnt_val ):
                     self.owner.crnt_reading = crnt_val
                     break
-
-                
-# ************************************************************************
-# ===========================> SETUP PROGRAM <===========================
-# ************************************************************************
-
-USB_PORT    = 0                                                                     # USB port number
-USB_BAUD    = 115200                                                                # Communication Baudrate
-USB_TIMEOUT = 5                                                                     # Timout in seconds
 
 # ************************************************************************
 # =========================> MAKE IT ALL HAPPEN <=========================
