@@ -318,11 +318,11 @@ def compute_rotation( position_crnt, TOL = 1e-6 ):
     if( theta >= -np.pi and THETA <= np.pi ):                               # Limit ourselves to atan2(y, x) domain
         if ( theta - THETA < -5 ):                                          #   In case we are going CCW
             revolutions -= 1                                                #       Decrement revolutions counter
-            print( "<DIR:CCW,REV:{},H:{}>".format(revolutions, z) )         #       ...
+            print( "<DIR:CCW,REV:{},H:{:.3f}>".format(revolutions, z) )     #       ...
             
         elif ( theta - THETA > 5 ):                                         #   In case we are going CW
             revolutions += 1                                                #       Increment revolutions counter
-            print( "<DIR:CW,REV:{},H:{}>".format(revolutions, z) )          #       ...
+            print( "<DIR:CW,REV:{},H:{:.3f}>".format(revolutions, z) )      #       ...
 
     position_prvs = position_crnt                                           # Update PAST variable
 
