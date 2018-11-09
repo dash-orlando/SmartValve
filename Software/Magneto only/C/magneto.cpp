@@ -25,7 +25,8 @@ LSM9DS1 imuLO( IMU_MODE_I2C, LSM9DS1_AG_LOW , LSM9DS1_M_LOW  );					// Even sens
 // Call auxiliary functions library
 #include "functions.h"
 
-
+// int 	argc	: number of arguments passed to program. argc >= 1 ALWAYS
+// char *argv[]	: Contain the arguments passed. argv[0] is ALWAYS the program name
 int main( int argc, char *argv[] )
 {
 	if( wiringPiSetupGpio() == -1 ) 											// Start the wiringPi library
@@ -48,7 +49,7 @@ int main( int argc, char *argv[] )
 			printf( "!imuHI.begin() %i\n", !imuHI.begin() );
 			printf( "!imuLO.begin() %i\n", !imuLO.begin() );
 			exit( EXIT_FAILURE );
-		} calibrateIMU( i ); 													// Perform user-defined calibration routine
+		} calibrateIMU( i, argc ); 													// Perform user-defined calibration routine
 	}
     
 	// Infinite loop after setup is complete

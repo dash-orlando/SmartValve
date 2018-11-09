@@ -44,6 +44,8 @@ import  pexpect                                             # Spawn programs
 # ************************************************************************
 ap = argparse.ArgumentParser()
 
+ap.add_argument( "-c", "--calibrate", action = 'store_true',
+                 help = "Compute & store new calibration offsets")
 ap.add_argument( "-d", "--debug", action = 'store_true',
                  help = "Debugging flag" )
 ap.add_argument( "-v", "--verbose", action = 'store_true',
@@ -388,8 +390,11 @@ K           = 1.09e-6                                                       # Bi
 dx          = 1e-7                                                          # Differential step size (Needed for solver)
 
 # Full path to the compiled .cpp program
-cpp_prog = "/home/pi/Desktop/magneto/magneto"                               # Define the program to use
-
+if( args["calibrate"] ):
+    cpp_prog = "/home/pi/Desktop/Software/C/magneto calibrate"              # Define the program to use + add calibration argument
+else:
+    cpp_prog = "/home/pi/Desktop/Software/C/magneto"                        # Define the program to use
+    
 # Error handling in case thread spawning fails (1/2)
 try:
     q_cpp_output = Queue( maxsize=0 )                                       # Define queue (this will have the magnetic field readings)
