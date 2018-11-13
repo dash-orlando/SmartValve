@@ -15,6 +15,11 @@
 *   - MODIFIED: direction and revolution calculations are based on polar
 *               co-ordinates
 *
+*
+* VERSION: 0.4.7
+*   - ADDED   : Tkinter GUI to display direction, # of revolutions
+*               and height.
+*
 * KNOWN ISSUES:
 *   - Can't determine whether we completed a FULL revolution
 *     or just crossed the 180degree mark.
@@ -24,7 +29,7 @@
 * LAST CONTRIBUTION DATE    :   Sep. 29th, 2017 Year of Our Lord
 * 
 * AUTHOR                    :   Mohammad Odeh 
-* LAST CONTRIBUTION DATE    :   Oct. 16th, 2018 Year of Our Lord
+* LAST CONTRIBUTION DATE    :   Nov. 13th, 2018 Year of Our Lord
 *
 '''
 
@@ -36,6 +41,8 @@ from    scipy.linalg                import  norm            # Calculate vector n
 from    threading                   import  Thread          # Create threads
 from    Queue                       import  Queue           # Create queues
 from    usbProtocol                 import  createUSBPort   # Create USB port (serial comm. w\ Arduino)
+from    analog_counter              import  counter         # Import Tkinter counter
+from    Tkinter                     import  *               # Import Tkinter (because damn you Python)
 import  argparse                                            # Feed in arguments to the program
 import  pexpect                                             # Spawn programs
 
@@ -43,6 +50,7 @@ import  pexpect                                             # Spawn programs
 # =====================> CONSTRUCT ARGUMENT PARSER <=====================*
 # ************************************************************************
 ap = argparse.ArgumentParser()
+
 
 ap.add_argument( "-c", "--calibrate", action = 'store_true',
                  help = "Compute & store new calibration offsets")
@@ -152,17 +160,17 @@ def get_array( array_queue, NSENS=4 ):
     '''
     
 
-    global CALIBRATING
+    global CALIBRATING, ToF_dist
 
     line = array_queue.get()                                                # Get whatever is in queue
     line = line.strip( "<" )                                                # Strip the SOH marker
     line = line.strip( ">" )                                                # Strip the EOT marker
-    
+
     try:
 
         # Check if array is corrupted
         col     = (line.rstrip()).split(",")                                # Split elements using delimiter
-        if (len(col) == NSENS*3):
+        if (len(col) == NSENS*3+1):                                         # 3 readings/sensor + 1 distance reading
             #
             # Construct magnetic field array
             #
@@ -318,13 +326,29 @@ def compute_rotation( position_crnt, TOL = 1e-6 ):
     _, THETA, _ = position_prvs                                             # ...
 
     if( theta >= -np.pi and THETA <= np.pi ):                               # Limit ourselves to atan2(y, x) domain
+        
         if ( theta - THETA < -5 ):                                          #   In case we are going CCW
             revolutions -= 1                                                #       Decrement revolutions counter
-            print( "<DIR:CCW,REV:{},H:{:.3f}>".format(revolutions, z) )     #       ...
+            
+            dial.direction = "CCW"                                          #       Set text labels in counter GUI
+            dial.revolutions= revolutions                                   #       ...
+            dial.height     = z                                             #       ...
+            dial.set_str()                                                  #       ...
+            gui.update()                                                    #       Update gui label
+            
+            print( "<DIR:CCW,REV:{},H:{:.3f}>".format( revolutions, z ) )   #       Print to STDOUT
+            
             
         elif ( theta - THETA > 5 ):                                         #   In case we are going CW
             revolutions += 1                                                #       Increment revolutions counter
-            print( "<DIR:CW,REV:{},H:{:.3f}>".format(revolutions, z) )      #       ...
+
+            dial.direction = "CW"                                           #       Set text labels in counter GUI
+            dial.revolutions= revolutions                                   #       ...
+            dial.height     = z                                             #       ...
+            dial.set_str()                                                  #       ...
+            gui.update()                                                    #       Update gui label
+            
+            print( "<DIR:CW,REV:{},H:{:.3f}>".format( revolutions, z) )     #       Print to STDOUT
 
     position_prvs = position_crnt                                           # Update PAST variable
 
@@ -391,10 +415,10 @@ dx          = 1e-7                                                          # Di
 
 # Full path to the compiled .cpp program
 if( args["calibrate"] ):
-    cpp_prog = "/home/pi/Desktop/Software/C/magneto calibrate"              # Define the program to use + add calibration argument
+    cpp_prog = "/home/pi/Desktop/Software/C/magneto calibrate"              # Define the program to use
 else:
     cpp_prog = "/home/pi/Desktop/Software/C/magneto"                        # Define the program to use
-    
+
 # Error handling in case thread spawning fails (1/2)
 try:
     q_cpp_output = Queue( maxsize=0 )                                       # Define queue (this will have the magnetic field readings)
@@ -411,6 +435,14 @@ except Exception as e:
     print( "Error Arguments {}".format(e.args)  )
     sleep( 2.5 )
     quit()                                                                  # Shutdown entire program
+
+# Setup Tkinter's GUI
+gui  = Tk()
+dial = counter( gui )
+dial.pack(side=TOP, expand=YES, fill=BOTH)
+dial.set_str()
+gui.attributes( "-fullscreen", True )
+gui.update()
 
 
 # ************************************************************************
