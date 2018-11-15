@@ -10,15 +10,14 @@
 *               get the most up to data magnetic field readings)
 *   - ADDED   : Determine direction and number of revolutions
 *
-*
 * VERSION: 0.4.5
 *   - MODIFIED: direction and revolution calculations are based on polar
 *               co-ordinates
 *
-*
-* VERSION: 0.4.7
+* VERSION: 0.4.7.1
 *   - ADDED   : Tkinter GUI to display direction, # of revolutions
 *               and height.
+*   - ADDED   : Publish data over MQTT
 *
 * KNOWN ISSUES:
 *   - Can't determine whether we completed a FULL revolution
@@ -29,7 +28,7 @@
 * LAST CONTRIBUTION DATE    :   Sep. 29th, 2017 Year of Our Lord
 * 
 * AUTHOR                    :   Mohammad Odeh 
-* LAST CONTRIBUTION DATE    :   Nov. 13th, 2018 Year of Our Lord
+* LAST CONTRIBUTION DATE    :   Nov. 15th, 2018 Year of Our Lord
 *
 '''
 
@@ -43,6 +42,7 @@ from    Queue                       import  Queue           # Create queues
 from    usbProtocol                 import  createUSBPort   # Create USB port (serial comm. w\ Arduino)
 from    analog_counter              import  counter         # Import Tkinter counter
 from    Tkinter                     import  *               # Import Tkinter (because damn you Python)
+from    MQTT_Client                 import  MQTT_Client     # Import home-built MQTT client
 import  argparse                                            # Feed in arguments to the program
 import  pexpect                                             # Spawn programs
 
@@ -50,7 +50,6 @@ import  pexpect                                             # Spawn programs
 # =====================> CONSTRUCT ARGUMENT PARSER <=====================*
 # ************************************************************************
 ap = argparse.ArgumentParser()
-
 
 ap.add_argument( "-c", "--calibrate", action = 'store_true',
                  help = "Compute & store new calibration offsets")
@@ -335,8 +334,12 @@ def compute_rotation( position_crnt, TOL = 1e-6 ):
             dial.height     = z                                             #       ...
             dial.set_str()                                                  #       ...
             gui.update()                                                    #       Update gui label
+
+            MQTT.send( MQTT.topics[ "dir"  ], "CCW"         )               #       Publish stuff over MQTT
+            MQTT.send( MQTT.topics[ "rev"  ], revolutions   )               #       ...
+            MQTT.send( MQTT.topics["height"], z             )               #       ...
             
-            print( "<DIR:CCW,REV:{},H:{:.3f}>".format( revolutions, z ) )   #       Print to STDOUT
+            print( "<DIR:CCW,REV:{},H:{:.3f}>".format( revolutions, z) )    #       Print to STDOUT
             
             
         elif ( theta - THETA > 5 ):                                         #   In case we are going CW
@@ -347,8 +350,12 @@ def compute_rotation( position_crnt, TOL = 1e-6 ):
             dial.height     = z                                             #       ...
             dial.set_str()                                                  #       ...
             gui.update()                                                    #       Update gui label
+
+            MQTT.send( MQTT.topics[ "dir"  ], "CW"          )               #       Publish stuff over MQTT
+            MQTT.send( MQTT.topics[ "rev"  ], revolutions   )               #       ...
+            MQTT.send( MQTT.topics["height"], z             )               #       ...
             
-            print( "<DIR:CW,REV:{},H:{:.3f}>".format( revolutions, z) )     #       Print to STDOUT
+            print( "<DIR:CW,REV:{},H:{:.3f}>".format( revolutions, z ) )    #       Print to STDOUT
 
     position_prvs = position_crnt                                           # Update PAST variable
 
@@ -436,6 +443,10 @@ except Exception as e:
     sleep( 2.5 )
     quit()                                                                  # Shutdown entire program
 
+# Start MQTT Client
+MQTT_IP_ADDRESS = "ENTER ADDRESS"                                           # IP address for MQTT broker
+MQTT = MQTT_Client( MQTT_IP_ADDRESS )                                       # Start MQTT client
+
 # Setup Tkinter's GUI
 gui  = Tk()
 dial = counter( gui )
@@ -482,10 +493,9 @@ while( True ):
     else: pass                                                              # ... is ALWAYS +ve
 
     # Print solution (coordinates) to screen
-    if( args["verbose"] ):
-        solution_str = "(x, y, z, t): ({:.3f}, {:.3f}, {:.3f}, {:.3f})"     # ...
-        print( solution_str.format( position[0], position[1],               # Print solution
-                                    position[2], position[3] ) )            # ...
+    solution_str = "(x, y, z, t): ({:.3f}, {:.3f}, {:.3f}, {:.3f})"         # ...
+    print( solution_str.format( position[0], position[1],                   # Print solution
+                                position[2], position[3] ) )                # ...
 
     sleep( 0.1 )                                                            # Sleep for stability
 
