@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Text;
 using System.Net;
+using System.Threading;
 using uPLibrary.Networking.M2Mqtt;
 using uPLibrary.Networking.M2Mqtt.Messages;
 using uPLibrary.Networking.M2Mqtt.Utility;
@@ -11,7 +12,11 @@ using System;
 
 public class mqttTest : MonoBehaviour
 {
-    public GameObject myGameObject;
+    public GameObject myGameObject;                                                         // Connect to valve assembly
+
+    public static bool  CCW = false;                                                        // Booleans to indicate whether or
+    public static bool  CW  = false;                                                        // ...not to animate rotation of valve
+    public static int   i   = 0;                                                            // Counter
 
 	private MqttClient client;
 	// Use this for initialization
@@ -72,8 +77,24 @@ public class mqttTest : MonoBehaviour
 	{ 
 		Debug.Log( "TOPIC   : " + e.Topic  );                                               // Get topic data was sent to
         Debug.Log( "MESSAGE : " + Encoding.UTF8.GetString(e.Message) );                     // Decode payload into UTF8
-    } 
 
+        if( e.Topic == "gate_valve/dir" )
+        {
+            if( string.Equals(Encoding.UTF8.GetString(e.Message), "CW") )
+            {
+                Debug.Log( "Rotating CW" );
+                CW = true;
+            }
+
+            else if( string.Equals(Encoding.UTF8.GetString(e.Message), "CCW") )
+            {
+                Debug.Log( "Rotating CCW" );
+                CCW = true;
+            } 
+        }
+    } 
+	
+	/* Create button on game screen */
 	void OnGUI(){
 		if ( GUI.Button (new Rect (20, 40, 320, 40), "Click here to send a test message"))
         {
@@ -87,8 +108,31 @@ public class mqttTest : MonoBehaviour
 	}
 
 	// Update is called once per frame
-	void Update ()
+    void Update ()
     {
-        myGameObject.transform.Rotate(0, Time.time, 0); // Do stuff here if you want
+        const int val = 5;																	// Scalar for how fast the valve should rotate
+		
+        if( CW ) 																			// In case CW is received
+        {
+            i++; 																			// Increment frame counter
+            myGameObject.transform.Rotate( 0, val, 0 ); 									// Rotate CW a "val" degrees
+            if( i == 360/val ) 																// If a complete revolution is done
+            {
+                CW = false;																	// Reset CW flag
+                i = 0;																		// Reset frame counter
+            }
+        }
+
+        if( CCW )
+        {
+            i++;
+            myGameObject.transform.Rotate( 0, -1*val, 0 );
+            if( i == 360/val )
+            {
+                CCW = false;
+                i = 0;
+            }
+        }
+        //myGameObject.transform.Rotate(0, Time.time, 0); // Do stuff here if you want
 	}
 }
